@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="chatBox" id="chatbox">
+      <div class="messageList" id="messageslist"></div>
+      <input
+        class="hide"
+        type="text"
+        spellcheck="false"
+        placeholder="Enter your message"
+        id="chatinput"
+        maxlength="255"
+      />
+      <span class="hide" id="charCount"></span>
+    </div>
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script>
+      let settings = {
+        removeInputColors: true,
+        characterCount: false,
+        lowerCaseCommand: true,
+        scrollbar: false,
+        maxLength: 200,
+        fontSize: 0.9,
+        chatToggle: true,
+        timeStamp: false,
+        pageSize: 18,
+      };
+
+      function setToggleTimestamp(timeStamp) {
+        settings.timeStamp = timeStamp;
+        if (timeStamp)
+            $(".timeStamp").show();
+        else 
+            $(".timeStamp").hide();
+        MESSAGE_LIST.scrollTop = MESSAGE_LIST.scrollHeight;
+      }
+
+      function setFontSize(fontSize) {
+        settings.fontSize = fontSize;
+        $("#chatbox").attr("style", `font-size: ${fontSize}vw`);
+        MESSAGE_LIST.scrollTop = MESSAGE_LIST.scrollHeight;
+      }
+
+      function setPageSize(pageSize) {
+        settings.pageSize = pageSize;
+        $(".messageList").css("height", `${pageSize}rem`);
+        MESSAGE_LIST.scrollTop = MESSAGE_LIST.scrollHeight;
+      }
+
+      function setToggleChat(chatToggle) {
+        settings.chatToggle = chatToggle;
+        if (chatToggle) {
+          $("#messageslist").show();
+          $("#chatinput").attr("placeholder", "Enter your message");
+        } else {
+          $("#messageslist").hide();
+          $("#chatinput").attr(
+            "placeholder",
+            "You disabled the chat, /togglechat to re-enable"
+          );
+        }
+      }
+
+      let CHAT_BOX, MESSAGE_LIST, CHAT_INPUT, CHAR_COUNT;
+
+      let chatAgain = new Date();
+
+      let chatActive = true;
+      let chatInputStatus = false;
+
+      const inputHistory = [];
+      let inputHistoryPosition = -1;
+      let inputCache = "";
+
+      const chatAPI = {
+        clear: () => {
+          MESSAGE_LIST.innerHTML = "";
+          for (let i = 0; i < 50; i++) chatAPI.push(" ");
+        },
+
+        push: (text) => {
+          if (text.length < 1) return;
+
+          MESSAGE_LIST.innerHTML += `
+        <div class="message stroke">
+           ${settings.timeStamp ? `<span class="timeStamp">${getDateString()}</span>` : `<span class="timeStamp" style="display: none;">${getDateString()}</span>`}
+            <span>${text}</span>
+        </div>`;
+
+          MESSAGE_LIST.childElementCount > 100 &&
+            MESSAGE_LIST.firstElementChild.remove();
+          MESSAGE_LIST.scrollTop = MESSAGE_LIST.scrollHeight;
+        },
+
+        activate: (toggle) => {
+          if (!toggle && chatActive) setChatInputStatus(false);
+          chatActive = toggle;
+        },
+
+        show: (toggle) => {
+          if (!toggle && chatInputStatus) setChatInputStatus(false);
+
+          toggle
+            ? (CHAT_BOX.className = "chatBox")
+            : (CHAT_BOX.className = "hide");
+
+          chatActive = toggle;
+        },
+      };
+
+      if (typeof mp !== "undefined") {
+        const api = {
+          "chat:push": chatAPI.push,
+          "chat:clear": chatAPI.clear,
+          "chat:activate": chatAPI.activate,
+          "chat:show": chatAPI.show,
+        };
+
+        for (const fn in api) {
+          mp.events.add(fn, api[fn]);
+        }
+      }
+
+      const setChatInputStatus = (status) => {
+        if ((!chatActive && status) || status == chatInputStatus) return;
+
+        mp.invoke("focus", status);
+        mp.invoke("setTypingInChatState", status);
+        if (status) {
+          chatInputStatus = true;
+          CHAT_INPUT.className = "inputBar";
+          if (settings.characterCount)
+            CHAR_COUNT.className = "charCount stroke";
+          CHAT_INPUT.focus();
+        } else {
+          chatInputStatus = false;
+          CHAT_INPUT.className = "hide";
+          CHAR_COUNT.className = "hide";
+        }
+      };
+
+      const getDateString = () => {
+        const date = new Date();
+        const h = "0" + date.getHours().toString();
+        const m = "0" + date.getMinutes().toString();
+        const s = "0" + date.getSeconds().toString();
+        return `[${h.substr(h.length - 2)}:${m.substr(m.length - 2)}:${s.substr(
+          s.length - 2
+        )}] `;
+      };
+
+      String.prototype.lowerCaseFirstWord = function () {
+        const word = this.split(" ")[0];
+        return this.replace(new RegExp(word, "gi"), word.toLowerCase());
+      };
+
+      const updateCharCount = () => {
+        CHAR_COUNT.innerText = `${CHAT_INPUT.value.length}/${settings.maxLength}`;
+      };
+
+      const sendInput = () => {
+        let message = CHAT_INPUT.value.trim();
+
+        if (settings.removeInputColors)
+          message = message.replace(/(?=!{).*(?<=})/g, "");
+
+        if (message.length < 1) {
+          setChatInputStatus(false);
+          return;
+        }
+        const chatNow = new Date();
+        if (chatAgain < chatNow) {
+          if (message[0] == "/") {
+            if (message.length < 2) {
+              setChatInputStatus(false);
+              return;
+            }
+            mp.invoke(
+              "command",
+              settings.lowerCaseCommand
+                ? message.lowerCaseFirstWord().substr(1)
+                : message.substr(1)
+            );
+          } else {
+            mp.invoke("chatMessage", message);
+          }
+
+          inputHistory.unshift(message);
+          inputHistory.length > 100 && inputHistory.pop();
+          CHAT_INPUT.value = "";
+          inputHistoryPosition = -1;
+          CHAR_COUNT.innerText = `0/${settings.maxLength}`;
+          setChatInputStatus(false);
+          chatAgain = new Date(chatNow.getTime() + 400);
+        } else {
+          inputHistory.unshift(message);
+          inputHistory.length > 100 && inputHistory.pop();
+          CHAT_INPUT.value = "";
+          inputHistoryPosition = -1;
+          CHAR_COUNT.innerText = `0/${settings.maxLength}`;
+          setChatInputStatus(false);
+          chatAPI.push(
+            '<span style="color: #cc2121;}">[System]</span> Please do not spam messages.'
+          );
+        }
+      };
+
+      const onArrowUp = () => {
+        if (inputHistoryPosition == inputHistory.length - 1) return;
+
+        if (inputHistoryPosition == -1) inputCache = CHAT_INPUT.value;
+
+        inputHistoryPosition++;
+        CHAT_INPUT.value = inputHistory[inputHistoryPosition];
+        updateCharCount();
+      };
+
+      const onArrowDown = () => {
+        if (inputHistoryPosition === -1) return;
+
+        if (inputHistoryPosition === 0) {
+          CHAT_INPUT.value = inputCache;
+          inputHistoryPosition = -1;
+          return;
+        }
+
+        inputHistoryPosition--;
+        CHAT_INPUT.value = inputHistory[inputHistoryPosition];
+        updateCharCount();
+      };
+
+      const onDocumentReady = () => {
+        CHAT_BOX = document.getElementById("chatbox");
+        MESSAGE_LIST = document.getElementById("messageslist");
+        CHAT_INPUT = document.getElementById("chatinput");
+        CHAR_COUNT = document.getElementById("charCount");
+        CHAT_INPUT.oninput = updateCharCount;
+        CHAT_INPUT.maxLength = settings.maxLength;
+
+        if (settings.scrollbar) {
+          MESSAGE_LIST.style.overflow = "auto";
+        }
+
+        updateCharCount();
+
+        chatAPI.push("Multiplayer started.");
+        for (let i = 0; i < 50; i++) chatAPI.push(" ");
+
+        document.addEventListener("keydown", (e) => {
+          switch (e.key) {
+            case "t":
+              if (!chatInputStatus && chatActive) {
+                setChatInputStatus(true);
+                e.preventDefault();
+              }
+              break;
+
+            case "Enter":
+              if (chatInputStatus) {
+                sendInput();
+                mp.invoke("setLastMessage", new Date().getTime());
+              }
+              break;
+
+            case "ArrowUp":
+              if (chatInputStatus) {
+                onArrowUp();
+                e.preventDefault();
+              }
+              break;
+
+            case "ArrowDown":
+              if (chatInputStatus) {
+                onArrowDown();
+                e.preventDefault();
+              }
+              break;
+
+            case "PageUp":
+              if (chatInputStatus) {
+                MESSAGE_LIST.scrollTop -= 15;
+              }
+              break;
+
+            case "PageDown":
+              if (chatInputStatus) {
+                MESSAGE_LIST.scrollTop += 15;
+              }
+              break;
+
+            case "Escape":
+              if (chatInputStatus && chatActive) {
+                setChatInputStatus(false);
+                mp.invoke("setLastMessage", new Date().getTime());
+                e.preventDefault();
+              }
+              break;
+          }
+        });
+      };
+
+      document.addEventListener("DOMContentLoaded", onDocumentReady);
+    </script>
+  </body>
+</html>
