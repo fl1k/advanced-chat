@@ -6,3 +6,5 @@ A simple improved version of ragemp chat with previously written messages and a 
 * /pagesize
 * /togglechat
 * /chathelp - to see all commands
+
+https://www.youtube.com/watch?v=LEJE1zBcRGQ
